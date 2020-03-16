@@ -1,0 +1,205 @@
+---
+title: "Foreasting Australia's beer production"
+author: 'Kyle Schmidt'
+date: '3/15/2020'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Install the necessary packages.
+```{r message=FALSE}
+library(TSA)
+library(forecast)
+```
+
+Import Beer Production in Australia (in Megaliters). Data can be found at this link: https://www.kaggle.com/shenba/time-series-datasets#monthly-beer-production-in-austr.csv
+```{r}
+beer <- read.csv('monthly-beer-production-in-austr.csv')
+```
+
+Create time-series object and initial time-series plot.
+```{r}
+# Create time-series object
+ts.beer <- ts(beer$Monthly.beer.production, start=c(1956, 1), deltat=1/12)
+
+# Plot
+plot(ts.beer, main='Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Megaliters)')
+```
+
+The variabilty of the data increases over time. A log transform will stabilize the data.
+```{r}
+# Log Tranform
+log.beer <- log(ts.beer)
+
+# Plot
+plot(log.beer, main='Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Log Megaliters)')
+```
+
+The log of the monthly beer production time-series plot shows an increasing trend. Estimate the trend.
+```{r}
+# Create a time veriable
+time.beer <- time(log.beer)
+
+# Fit a quadratric model
+lm.beer <- lm(log.beer~time.beer + I(time.beer^2))
+
+# Estimate the trend using the linear model
+pred.beer <-predict(lm.beer, newdata=time.beer)
+
+# Create time-series object from the estimated trend
+trend.beer <- ts(pred.beer, start=c(1956, 1), deltat=1/12)
+
+# Plot the trend
+plot(log.beer, main='Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Log Megaliters)')
+
+# Add trend line to the plot
+lines(trend.beer, col = "red")
+```
+
+Remove the estimated trend from the log time-series by plotting the residuals.
+```{r}
+# Change the residuals into a time-series object
+trend.res <- ts(lm.beer$residuals, start=c(1956, 1), deltat=1/12)
+
+# plot the residuals
+plot(trend.res, main='Trend Adjusted Log Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Log Megaliters)')
+```
+
+There is also seasonality in the time-series. Estimate the seasonality.
+```{r}
+# Extract the month from each point
+month <- cycle(log.beer)
+
+# Calculate the mean of each month
+res.lm <- lm(trend.res~factor(month))
+
+# Subtract each point by the corresponding monthly mean
+season.beer <- ts(res.lm$fitted.values, start=c(1956, 1), deltat=1/12)
+
+# plot the seasonality
+plot(season.beer, main='Seasonal Beer Production in Australia', xlab ='Year', ylab='Beer (Log Megaliters)')
+```
+
+Remove the seasonality from the trend adjusted log monthly beer production.
+```{r}
+# remove the seasonality
+rand.beer <- ts(residuals(res.lm), start=c(1956, 1), deltat = 1/12)
+
+# plot the final series
+plot(rand.beer, main='Trend and Seasonality Adjusted Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Log Megaliters)')
+```
+
+Alternatively trend and seasoanlity can be removed by differencing.
+```{r}
+dif.beer <- diff(log.beer)
+
+plot(dif.beer, main='Differenced Log Beer Production in Australia', xlab='Year', ylab='Difference')
+```
+
+The differenced time-series looks to be closer to stationary than the manual trend and seasonality adjusted time-series. Look at the autocorrelation and partial autcorrelation functions of the differenced time-series to fit a model.
+```{r}
+# ACF plot
+acf(dif.beer, lag.max=48, main = 'ACF for Differenced Series')
+
+# PACF plot
+pacf(dif.beer, lag.max=48, main = 'PACF for Differenced Series')
+```
+
+The initial ACF and PACF plot indicates seasonality each 12 months. Use a seasonal difference at lag 12.
+```{r}
+seasdif.beer <- diff(dif.beer, lag=12)
+
+plot(seasdif.beer, main='Seasonal Difference of Log Beer Production in Australia', xlab='Year', ylab='Difference')
+```
+
+Plot the ACf and PACF functions of the second differencing.
+```{r}
+# ACF plot
+acf(seasdif.beer, lag.max=36, main = 'ACF for Second Difference of Time-Series')
+
+# PACF plot
+pacf(seasdif.beer, lag.max=36, main = 'PACF for Second Difference of Time-Series')
+```
+
+Fit a SARIMA model to the data.
+
+non-seasonal: ACF and PACF both decay indicating an ARMA model.
+
+seasonal: ACF and PACF both decay indicating an ARMA model.
+
+There is still seasonality at lag 12 so I will fit a few different SARIMA models and compare AIC values.
+```{r}
+arima(log.beer, order=c(2,1,3), seasonal=list(order=c(1,1,1), period=12))
+
+arima(log.beer, order=c(2,1,3), seasonal=list(order=c(0,1,1), period=12))
+
+arima(log.beer, order=c(2,1,3), seasonal=list(order=c(0,1,2), period=12))
+
+
+fit <- arima(log.beer, order=c(2,1,3), seasonal=list(order=c(0,1,1), period=12))
+```
+
+The ARIMA(2, 1, 3) x (0, 1, 2) model has the lowest AIC so I'll check the diagnostics on it
+```{r}
+# plot ACf and PACF
+acf(fit$residuals, lag.max=36)
+pacf(fit$residuals, lag.max=36)
+
+# check the Ljung Box statistic
+tsdiag(fit)
+
+# Check for normality
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+```
+
+The model looks to be a reasonable fit. Forecast using the model:
+```{r}
+# get predictions from model
+pred <- predict(fit, n.ahead=12)
+
+# plot original time-series
+plot(ts.beer, main='Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Megaliters)', xlim=c(1956, 1997))
+
+# add forecast predictions coverted back to original scale from log scale
+lines(exp(pred$pred), col='red')
+```
+
+A closer look at the forecast, with 95% confidence interval
+```{r}
+# plot original time-series
+plot(ts.beer, main='Monthly Beer Production in Australia', xlab='Year', ylab='Beer (Megaliters)', xlim=c(1993, 1996.5))
+
+# add forecast and confidence intervals
+lines(exp(pred$pred), col='red')
+lines(exp(pred$pred+2*pred$se), col='blue')
+lines(exp(pred$pred-2*pred$se), col='blue')
+```
+
+Compare to Holt Winters exponential smoothing forecast method
+```{r}
+hlt.beer <- hw(ts.beer, seasonal='multiplicative', h=12)
+
+plot(hlt.beer)
+plot(hlt.beer, xlim=c(1993, 1996.5))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
