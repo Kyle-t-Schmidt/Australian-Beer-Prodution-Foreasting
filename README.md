@@ -12,7 +12,7 @@ I will be forecating the next 12 months of beer production. In this program I de
 * Data visualization
 
 ## Program purpose
-I briefly explore the dataset, estimating the trend and seasonality before using both the Box-Jenking autoregressive integrated moving average and Holt-Winters Seasonal Smoothing methods to forecast future beer production
+I briefly explore the dataset, estimating the trend and seasonality before using both the Box-Jenkins autoregressive integrated moving average and Holt-Winters Seasonal Smoothing methods to forecast future beer production
 
 ## Using the program
 To run the program you will need to download the data, either from this repository or directly from the source and save it in your R working directory. After opening the .Rmd file you can either step through the program one chunk at a time or run all code. You will need to have R packages 'TSA' and 'Forecast' installed to run the program
